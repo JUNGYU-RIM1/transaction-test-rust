@@ -26,6 +26,7 @@ There are some exception cases not in the specification
 
 - The tx id of dispute is existed as deposit or withdrawal, but client is different => ignore dispute 
 - Withdrawal when deposit log is not existed => ignore withdrawal
+- If withdrawal become disputed => only held and total are increased(consider that dispute is reverse transaction process)
 
 # TODO
 
