@@ -20,6 +20,13 @@ The output will be generated to both csv and stdout.
 - THere are some unit test to prove that domain logic is right
 - There is no IO operation in this project
 
+# Exception case
+
+There are some exception cases not in the specification
+
+- The tx id of dispute is existed as deposit or withdrawal, but client is different => ignore dispute 
+- Withdrawal when deposit log is not existed => ignore withdrawal
+
 # TODO
 
 - There is a case that avaliable amount become minus(testData1.csv).
