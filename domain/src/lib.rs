@@ -265,7 +265,7 @@ mod tests {
     }
 
     #[test]
-    fn diposit_and_withdrawal_should_be_ignored_if_same_transaction_id_is_already_existed() {
+    fn deposit_and_withdrawal_should_be_ignored_if_same_transaction_id_is_already_existed() {
         let mut accounts = Accounts::new();
         accounts.add_transaction(1, 1, Transaction::Deposit { amount: dec!(100) });
         accounts.add_transaction(1, 1, Transaction::Deposit { amount: dec!(100) });
