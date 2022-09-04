@@ -1,4 +1,4 @@
-mod domain {
+pub mod domain {
     use std::collections::{hash_map::Iter, HashMap, HashSet};
 
     use rust_decimal::Decimal;
@@ -13,16 +13,22 @@ mod domain {
     }
 
     #[derive(Debug, PartialEq)]
-    pub enum DepositState {
+    pub enum TransactionState {
         Resolve,
         Dispute,
         Chargeback,
     }
 
     #[derive(Debug, PartialEq)]
-    pub struct Deposit {
-        pub amount: Decimal,
-        pub state: DepositState,
+    pub enum TransactionActionState {
+        Deposit { amount: Decimal },
+        Withdrawal { amount: Decimal },
+    }
+
+    #[derive(Debug, PartialEq)]
+    pub struct TransactionLog {
+        pub amount: TransactionActionState,
+        pub state: TransactionState,
     }
 
     pub struct Accounts {
@@ -67,7 +73,7 @@ mod domain {
         pub available: Decimal,
         pub held: Decimal,
         pub locked: bool,
-        pub deposit_log: HashMap<u32, Deposit>,
+        pub transaction_log: HashMap<u32, TransactionLog>,
     }
 
     impl UserAccount {
@@ -77,11 +83,11 @@ mod domain {
                     available: amount,
                     held: dec!(0),
                     locked: false,
-                    deposit_log: HashMap::from([(
+                    transaction_log: HashMap::from([(
                         tx,
-                        Deposit {
-                            amount: amount,
-                            state: DepositState::Resolve,
+                        TransactionLog {
+                            amount: TransactionActionState::Deposit { amount: amount },
+                            state: TransactionState::Resolve,
                         },
                     )]),
                 }),
@@ -95,63 +101,110 @@ mod domain {
             }
             match transaction {
                 Transaction::Deposit { amount } => {
-                    self.deposit_log.insert(
+                    self.transaction_log.insert(
                         tx,
-                        Deposit {
-                            amount: amount,
-                            state: DepositState::Resolve,
+                        TransactionLog {
+                            amount: TransactionActionState::Deposit { amount: amount },
+                            state: TransactionState::Resolve,
                         },
                     );
                     self.available = self.available + amount;
                 }
 
                 Transaction::Dispute => {
-                    if let Some(x) = self.deposit_log.get_mut(&tx) {
-                        if matches!(x.state, DepositState::Resolve) {
-                            *x = Deposit {
-                                amount: x.amount,
-                                state: DepositState::Dispute,
-                            };
-                            self.available = self.available - x.amount;
-                            self.held = self.held + x.amount;
+                    if let Some(x) = self.transaction_log.get_mut(&tx) {
+                        if matches!(x.state, TransactionState::Resolve) {
+                            match x.amount {
+                                TransactionActionState::Deposit { amount } => {
+                                    *x = TransactionLog {
+                                        amount: TransactionActionState::Deposit { amount: amount },
+                                        state: TransactionState::Dispute,
+                                    };
+                                    self.available = self.available - amount;
+                                    self.held = self.held + amount;
+                                }
+                                TransactionActionState::Withdrawal { amount } => {
+                                    *x = TransactionLog {
+                                        amount: TransactionActionState::Withdrawal {
+                                            amount: amount,
+                                        },
+                                        state: TransactionState::Dispute,
+                                    };
+                                    self.held = self.held + amount;
+                                }
+                            }
                         }
                     }
                 }
 
                 Transaction::Resolve => {
-                    if let Some(x) = self.deposit_log.get_mut(&tx) {
-                        if matches!(x.state, DepositState::Dispute) {
-                            *x = Deposit {
-                                amount: x.amount,
-                                state: DepositState::Resolve,
-                            };
-                            self.available = self.available + x.amount;
-                            self.held = self.held - x.amount;
+                    if let Some(x) = self.transaction_log.get_mut(&tx) {
+                        if matches!(x.state, TransactionState::Dispute) {
+                            match x.amount {
+                                TransactionActionState::Deposit { amount } => {
+                                    *x = TransactionLog {
+                                        amount: TransactionActionState::Deposit { amount: amount },
+                                        state: TransactionState::Resolve,
+                                    };
+                                    self.available = self.available + amount;
+                                    self.held = self.held - amount;
+                                }
+                                TransactionActionState::Withdrawal { amount } => {
+                                    *x = TransactionLog {
+                                        amount: TransactionActionState::Withdrawal {
+                                            amount: amount,
+                                        },
+                                        state: TransactionState::Resolve,
+                                    };
+                                    self.held = self.held - amount;
+                                }
+                            }
                         }
                     }
                 }
 
                 Transaction::Chargeback => {
-                    if let Some(x) = self.deposit_log.get_mut(&tx) {
-                        if matches!(x.state, DepositState::Dispute) {
-                            *x = Deposit {
-                                amount: x.amount,
-                                state: DepositState::Chargeback,
-                            };
-                            self.held = self.held - x.amount;
-                            self.locked = true;
+                    if let Some(x) = self.transaction_log.get_mut(&tx) {
+                        if matches!(x.state, TransactionState::Dispute) {
+                            match x.amount {
+                                TransactionActionState::Deposit { amount } => {
+                                    *x = TransactionLog {
+                                        amount: TransactionActionState::Deposit { amount: amount },
+                                        state: TransactionState::Chargeback,
+                                    };
+                                    self.held = self.held - amount;
+                                    self.locked = true;
+                                }
+                                TransactionActionState::Withdrawal { amount } => {
+                                    *x = TransactionLog {
+                                        amount: TransactionActionState::Withdrawal {
+                                            amount: amount,
+                                        },
+                                        state: TransactionState::Chargeback,
+                                    };
+                                    self.held = self.held - amount;
+                                    self.locked = true;
+                                }
+                            }
                         }
                     }
                 }
 
                 Transaction::Withdrawal { amount } => {
-                    self.withdrawal(amount);
+                    self.withdrawal(amount, tx);
                 }
             }
         }
 
-        fn withdrawal(&mut self, amount: Decimal) {
+        fn withdrawal(&mut self, amount: Decimal, tx: u32) {
             if self.available >= amount {
+                self.transaction_log.insert(
+                    tx,
+                    TransactionLog {
+                        amount: TransactionActionState::Withdrawal { amount: amount },
+                        state: TransactionState::Resolve,
+                    },
+                );
                 self.available = self.available - amount;
             }
         }
@@ -164,7 +217,10 @@ mod tests {
 
     use rust_decimal_macros::dec;
 
-    use crate::domain::{Accounts, Deposit, DepositState, Transaction, UserAccount};
+    use crate::domain::{
+        Accounts, Transaction, TransactionActionState, TransactionLog, TransactionState,
+        UserAccount,
+    };
 
     #[test]
     fn first_transaction_should_be_added_if_transaction_state_is_deposit() {
@@ -178,11 +234,11 @@ mod tests {
                 available: dec!(100),
                 held: dec!(0),
                 locked: false,
-                deposit_log: HashMap::from([(
+                transaction_log: HashMap::from([(
                     1,
-                    Deposit {
-                        amount: dec!(100),
-                        state: DepositState::Resolve,
+                    TransactionLog {
+                        amount: TransactionActionState::Deposit { amount: dec!(100) },
+                        state: TransactionState::Resolve,
                     },
                 )]),
             })
@@ -193,11 +249,11 @@ mod tests {
                 available: dec!(1000),
                 held: dec!(0),
                 locked: false,
-                deposit_log: HashMap::from([(
+                transaction_log: HashMap::from([(
                     2,
-                    Deposit {
-                        amount: dec!(1000),
-                        state: DepositState::Resolve,
+                    TransactionLog {
+                        amount: TransactionActionState::Deposit { amount: dec!(1000) },
+                        state: TransactionState::Resolve,
                     },
                 )]),
             })
@@ -219,13 +275,13 @@ mod tests {
                 available: dec!(100),
                 held: dec!(0),
                 locked: false,
-                deposit_log: HashMap::from([(
+                transaction_log: HashMap::from([(
                     1,
-                    Deposit {
-                        amount: dec!(100),
-                        state: DepositState::Resolve,
+                    TransactionLog {
+                        amount: TransactionActionState::Deposit { amount: dec!(100) },
+                        state: TransactionState::Resolve,
                     },
-                )]),
+                ),]),
             })
         );
     }
@@ -243,19 +299,26 @@ mod tests {
                 available: dec!(500),
                 held: dec!(0),
                 locked: false,
-                deposit_log: HashMap::from([
+                transaction_log: HashMap::from([
                     (
                         1,
-                        Deposit {
-                            amount: dec!(1000),
-                            state: DepositState::Resolve,
+                        TransactionLog {
+                            amount: TransactionActionState::Deposit { amount: dec!(1000) },
+                            state: TransactionState::Resolve,
                         },
                     ),
                     (
                         2,
-                        Deposit {
-                            amount: dec!(1000),
-                            state: DepositState::Resolve,
+                        TransactionLog {
+                            amount: TransactionActionState::Deposit { amount: dec!(1000) },
+                            state: TransactionState::Resolve,
+                        },
+                    ),
+                    (
+                        3,
+                        TransactionLog {
+                            amount: TransactionActionState::Withdrawal { amount: dec!(1500) },
+                            state: TransactionState::Resolve,
                         },
                     )
                 ]),
@@ -277,19 +340,19 @@ mod tests {
                 available: dec!(1000),
                 held: dec!(1000),
                 locked: false,
-                deposit_log: HashMap::from([
+                transaction_log: HashMap::from([
                     (
                         1,
-                        Deposit {
-                            amount: dec!(1000),
-                            state: DepositState::Resolve,
+                        TransactionLog {
+                            amount: TransactionActionState::Deposit { amount: dec!(1000) },
+                            state: TransactionState::Resolve,
                         },
                     ),
                     (
                         2,
-                        Deposit {
-                            amount: dec!(1000),
-                            state: DepositState::Dispute,
+                        TransactionLog {
+                            amount: TransactionActionState::Deposit { amount: dec!(1000) },
+                            state: TransactionState::Dispute,
                         },
                     )
                 ]),
@@ -309,11 +372,11 @@ mod tests {
                 available: dec!(0),
                 held: dec!(100),
                 locked: false,
-                deposit_log: HashMap::from([(
+                transaction_log: HashMap::from([(
                     1,
-                    Deposit {
-                        amount: dec!(100),
-                        state: DepositState::Dispute,
+                    TransactionLog {
+                        amount: TransactionActionState::Deposit { amount: dec!(100) },
+                        state: TransactionState::Dispute,
                     },
                 )]),
             })
@@ -321,7 +384,7 @@ mod tests {
     }
 
     #[test]
-    fn disputed_deposit_data_should_be_resolved_if_resovle_transaction_data_come(){
+    fn disputed_deposit_data_should_be_resolved_if_resovle_transaction_data_come() {
         let mut accounts = Accounts::new();
         accounts.add_transaction(1, 1, Transaction::Deposit { amount: dec!(100) });
         accounts.add_transaction(1, 1, Transaction::Dispute);
@@ -333,16 +396,15 @@ mod tests {
                 available: dec!(100),
                 held: dec!(0),
                 locked: false,
-                deposit_log: HashMap::from([(
+                transaction_log: HashMap::from([(
                     1,
-                    Deposit {
-                        amount: dec!(100),
-                        state: DepositState::Resolve,
+                    TransactionLog {
+                        amount: TransactionActionState::Deposit { amount: dec!(100) },
+                        state: TransactionState::Resolve,
                     },
                 )]),
             })
         );
-
     }
 
     #[test]
@@ -358,13 +420,47 @@ mod tests {
                 available: dec!(0),
                 held: dec!(0),
                 locked: true,
-                deposit_log: HashMap::from([(
+                transaction_log: HashMap::from([(
                     1,
-                    Deposit {
-                        amount: dec!(100),
-                        state: DepositState::Chargeback,
+                    TransactionLog {
+                        amount: TransactionActionState::Deposit { amount: dec!(100) },
+                        state: TransactionState::Chargeback,
                     },
                 )]),
+            })
+        );
+    }
+
+    #[test]
+    fn withdrawal_data_should_be_charge_back_if_that_data_is_disputed() {
+        let mut accounts = Accounts::new();
+        accounts.add_transaction(1, 1, Transaction::Deposit { amount: dec!(100) });
+        accounts.add_transaction(1, 2, Transaction::Withdrawal { amount: dec!(100) });
+        accounts.add_transaction(1, 2, Transaction::Dispute);
+        accounts.add_transaction(1, 2, Transaction::Chargeback);
+
+        assert_eq!(
+            accounts.get_user_account(1),
+            Some(&UserAccount {
+                available: dec!(0),
+                held: dec!(0),
+                locked: true,
+                transaction_log: HashMap::from([
+                    (
+                        1,
+                        TransactionLog {
+                            amount: TransactionActionState::Deposit { amount: dec!(100) },
+                            state: TransactionState::Resolve,
+                        },
+                    ),
+                    (
+                        2,
+                        TransactionLog {
+                            amount: TransactionActionState::Withdrawal { amount: dec!(100) },
+                            state: TransactionState::Chargeback,
+                        },
+                    ),
+                ]),
             })
         );
     }
@@ -386,11 +482,11 @@ mod tests {
                 available: dec!(0),
                 held: dec!(0),
                 locked: true,
-                deposit_log: HashMap::from([(
+                transaction_log: HashMap::from([(
                     1,
-                    Deposit {
-                        amount: dec!(100),
-                        state: DepositState::Chargeback,
+                    TransactionLog {
+                        amount: TransactionActionState::Deposit { amount: dec!(100) },
+                        state: TransactionState::Chargeback,
                     },
                 )]),
             })
