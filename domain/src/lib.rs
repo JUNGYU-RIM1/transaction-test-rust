@@ -223,10 +223,14 @@ mod tests {
     };
 
     #[test]
-    fn first_transaction_should_be_added_if_transaction_state_is_deposit() {
+    fn first_transaction_should_be_added_only_if_transaction_state_is_deposit() {
         let mut accounts = Accounts::new();
         accounts.add_transaction(1, 1, Transaction::Deposit { amount: dec!(100) });
         accounts.add_transaction(2, 2, Transaction::Deposit { amount: dec!(1000) });
+        accounts.add_transaction(3, 3, Transaction::Withdrawal { amount: dec!(1000) });
+        accounts.add_transaction(4, 4, Transaction::Dispute );
+        accounts.add_transaction(5, 5, Transaction::Chargeback );
+        accounts.add_transaction(6, 6, Transaction::Resolve );
 
         assert_eq!(
             accounts.get_user_account(1),
