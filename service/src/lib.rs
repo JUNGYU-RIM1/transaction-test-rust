@@ -2,7 +2,7 @@ pub mod service {
     use domain::domain::{Accounts, Transaction};
     use rust_decimal::Decimal;
     use serde::{Deserialize, Serialize};
-    use std::{error::Error, fs::File, io, str::FromStr};
+    use std::{error::Error, fs::File};
 
     const DEPOSIT: &str = "deposit";
     const WITHDRAWAL: &str = "withdrawal";

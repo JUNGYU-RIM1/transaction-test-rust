@@ -1,6 +1,6 @@
 use std::{
     env,
-    io::{self, BufRead},
+    io::{self},
 };
 
 fn main() -> io::Result<()> {
