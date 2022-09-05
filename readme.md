@@ -29,6 +29,7 @@ There are some exception cases not in the specification
 - If withdrawal become disputed => only held and total are increased(consider that dispute is reverse transaction process)
 
 # TODO
+- What if withdrawal is dispute. Currently, only increase held.
 
 - There is a case that avaliable amount become minus(testData1.csv).
 ```
