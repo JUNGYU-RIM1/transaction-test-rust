@@ -65,9 +65,9 @@ pub mod service {
         accounts.get_user_accounts().for_each(|item| {
             let record = OutputRecord {
                 client: item.0.clone(),
-                available: item.1.available.round_dp(4),
-                held: item.1.held.round_dp(4),
-                total: item.1.available.round_dp(4) + item.1.held.round_dp(4),
+                available: item.1.available,
+                held: item.1.held,
+                total: item.1.available + item.1.held,
                 locked: item.1.locked,
             };
             println!(
