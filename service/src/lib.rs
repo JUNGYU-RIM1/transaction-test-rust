@@ -59,7 +59,7 @@ pub mod service {
     }
 
     pub fn write_csv(file_path: String, accounts: &Accounts) -> Result<(), Box<dyn Error>> {
-        println!("client,available,held,total,lock");
+        println!("client,available,held,total,locked");
         let mut wtr = csv::Writer::from_path(file_path)?;
 
         accounts.get_user_accounts().for_each(|item| {
